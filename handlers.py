@@ -316,3 +316,4 @@ async def chat_message(msg: Message) -> None:
         return
 
     await msg.bot.send_message(partner["id"], msg.text)
+
