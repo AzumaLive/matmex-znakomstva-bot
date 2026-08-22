@@ -17,7 +17,10 @@ TIMEZONE = "Asia/Yekaterinburg"
 PAIR_START_HOUR = 0
 PAIR_START_MINUTE = 0
 
-ADMIN_IDS = {int(x.strip()) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip()}
+ADMIN_IDS = [
+    990527370,
+    1444691093,
+]
 
 TOPICS = [
     "Тема 1",
