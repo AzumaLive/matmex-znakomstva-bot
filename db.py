@@ -68,6 +68,13 @@ def get_all_user_ids():
     return [r["id"] for r in rows]
 
 
+def get_all_users():
+    conn = get_conn()
+    rows = conn.execute("SELECT * FROM users ORDER BY id").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 def set_active(user_id, active):
     conn = get_conn()
     conn.execute("UPDATE users SET active = ? WHERE id = ?", (1 if active else 0, user_id))

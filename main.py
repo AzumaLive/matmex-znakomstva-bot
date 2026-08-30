@@ -66,6 +66,27 @@ async def main() -> None:
         await nightly_matching(bot)
         await msg.answer("Подбор выполнен.")
 
+    @dp.message(Command("users"))
+    async def cmd_users(msg: Message) -> None:
+        if msg.from_user.id not in config.ADMIN_IDS:
+            await msg.answer("Нет доступа.")
+            return
+        users = db.get_all_users()
+        if not users:
+            await msg.answer("Пользователей нет.")
+            return
+        lines = []
+        for u in users:
+            status = "активна" if u.get("active", 1) else "выключена"
+            group = f", группа {u['group_num']}" if u.get("group_num") else ""
+            lines.append(
+                f"• {u['first_name']} {u['last_name']} — {u['role']}{group} "
+                f"[id {u['id']}], анкета {status}"
+            )
+        await msg.answer(
+            f"👥 Пользователей: {len(users)}\n\n" + "\n".join(lines)
+        )
+
     await bot.set_my_commands(
         [
             BotCommand(command="start", description="Меню и моя анкета"),
