@@ -15,13 +15,15 @@ import config
 import db
 from handlers import PARTNER_LEFT_MESSAGE, format_user, router
 
+BAN_MESSAGE = "Вы забанены. Если тебе кажется, что произошла ошибка — пиши @forev4r_young1."
+
 
 class BanMiddleware(BaseMiddleware):
     async def __call__(self, handler, event, data):
         if isinstance(event, Message):
             user = db.get_user(event.from_user.id)
             if user and user.get("banned"):
-                await event.answer("Вы забанены.")
+                await event.answer(BAN_MESSAGE)
                 return
         return await handler(event, data)
 
@@ -124,6 +126,10 @@ async def main() -> None:
         if partner:
             db.end_pair(target, today)
             await bot.send_message(partner["id"], PARTNER_LEFT_MESSAGE)
+        try:
+            await bot.send_message(target, BAN_MESSAGE)
+        except Exception as e:
+            logging.warning("Не удалось уведомить забаненного %s: %s", target, e)
         await msg.answer(f"🚫 {user['first_name']} {user['last_name']} (id {target}) забанен.")
 
     @dp.message(Command("unban"))
