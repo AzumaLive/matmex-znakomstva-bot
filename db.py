@@ -20,7 +20,8 @@ def init_db():
             last_name  TEXT NOT NULL,
             role       TEXT NOT NULL,
             group_num  TEXT,
-            active     INTEGER NOT NULL DEFAULT 1
+            active     INTEGER NOT NULL DEFAULT 1,
+            banned     INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS pairs (
@@ -39,6 +40,8 @@ def init_db():
     cols = [r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
     if "active" not in cols:
         conn.execute("ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1")
+    if "banned" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN banned INTEGER NOT NULL DEFAULT 0")
     conn.commit()
     conn.close()
 
@@ -63,7 +66,7 @@ def get_user(user_id):
 
 def get_all_user_ids():
     conn = get_conn()
-    rows = conn.execute("SELECT id FROM users WHERE active = 1").fetchall()
+    rows = conn.execute("SELECT id FROM users WHERE active = 1 AND banned = 0").fetchall()
     conn.close()
     return [r["id"] for r in rows]
 
@@ -78,6 +81,13 @@ def get_all_users():
 def set_active(user_id, active):
     conn = get_conn()
     conn.execute("UPDATE users SET active = ? WHERE id = ?", (1 if active else 0, user_id))
+    conn.commit()
+    conn.close()
+
+
+def set_banned(user_id, banned):
+    conn = get_conn()
+    conn.execute("UPDATE users SET banned = ? WHERE id = ?", (1 if banned else 0, user_id))
     conn.commit()
     conn.close()
 

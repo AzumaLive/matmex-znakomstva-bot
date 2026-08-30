@@ -3,7 +3,7 @@ import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from aiogram import Bot, Dispatcher
+from aiogram import BaseMiddleware, Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import Command
@@ -13,7 +13,17 @@ from apscheduler.triggers.cron import CronTrigger
 
 import config
 import db
-from handlers import format_user, router
+from handlers import PARTNER_LEFT_MESSAGE, format_user, router
+
+
+class BanMiddleware(BaseMiddleware):
+    async def __call__(self, handler, event, data):
+        if isinstance(event, Message):
+            user = db.get_user(event.from_user.id)
+            if user and user.get("banned"):
+                await event.answer("Вы забанены.")
+                return
+        return await handler(event, data)
 
 
 async def nightly_matching(bot: Bot) -> None:
@@ -57,6 +67,7 @@ async def main() -> None:
     bot = Bot(token=config.BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher()
     dp.include_router(router)
+    dp.message.middleware(BanMiddleware())
 
     @dp.message(Command("matchnow"))
     async def cmd_matchnow(msg: Message) -> None:
@@ -77,7 +88,12 @@ async def main() -> None:
             return
         lines = []
         for u in users:
-            status = "активна" if u.get("active", 1) else "выключена"
+            if u.get("banned"):
+                status = "забанена"
+            elif u.get("active", 1):
+                status = "активна"
+            else:
+                status = "выключена"
             group = f", группа {u['group_num']}" if u.get("group_num") else ""
             lines.append(
                 f"• {u['first_name']} {u['last_name']} — {u['role']}{group} "
@@ -86,6 +102,46 @@ async def main() -> None:
         await msg.answer(
             f"👥 Пользователей: {len(users)}\n\n" + "\n".join(lines)
         )
+
+    @dp.message(Command("ban"))
+    async def cmd_ban(msg: Message) -> None:
+        if msg.from_user.id not in config.ADMIN_IDS:
+            await msg.answer("Нет доступа.")
+            return
+        parts = msg.text.split()
+        if len(parts) < 2 or not parts[1].isdigit():
+            await msg.answer("Использование: /ban <id>")
+            return
+        target = int(parts[1])
+        user = db.get_user(target)
+        if not user:
+            await msg.answer("Пользователь с таким id не найден.")
+            return
+        db.set_banned(target, True)
+        db.set_active(target, False)
+        today = datetime.now(ZoneInfo(config.TIMEZONE)).strftime("%Y-%m-%d")
+        partner = db.get_active_partner(target, today)
+        if partner:
+            db.end_pair(target, today)
+            await bot.send_message(partner["id"], PARTNER_LEFT_MESSAGE)
+        await msg.answer(f"🚫 {user['first_name']} {user['last_name']} (id {target}) забанен.")
+
+    @dp.message(Command("unban"))
+    async def cmd_unban(msg: Message) -> None:
+        if msg.from_user.id not in config.ADMIN_IDS:
+            await msg.answer("Нет доступа.")
+            return
+        parts = msg.text.split()
+        if len(parts) < 2 or not parts[1].isdigit():
+            await msg.answer("Использование: /unban <id>")
+            return
+        target = int(parts[1])
+        user = db.get_user(target)
+        if not user:
+            await msg.answer("Пользователь с таким id не найден.")
+            return
+        db.set_banned(target, False)
+        await msg.answer(f"✅ {user['first_name']} {user['last_name']} (id {target}) разбанен.")
 
     await bot.set_my_commands(
         [
