@@ -21,7 +21,8 @@ def init_db():
             role       TEXT NOT NULL,
             group_num  TEXT,
             active     INTEGER NOT NULL DEFAULT 1,
-            banned     INTEGER NOT NULL DEFAULT 0
+            banned     INTEGER NOT NULL DEFAULT 0,
+            last_topics TEXT
         );
 
         CREATE TABLE IF NOT EXISTS pairs (
@@ -35,6 +36,11 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_pairs_date ON pairs(date);
         CREATE INDEX IF NOT EXISTS idx_pairs_user1 ON pairs(user1_id);
         CREATE INDEX IF NOT EXISTS idx_pairs_user2 ON pairs(user2_id);
+
+        CREATE TABLE IF NOT EXISTS settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT
+        );
         """
     )
     cols = [r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
@@ -42,6 +48,8 @@ def init_db():
         conn.execute("ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1")
     if "banned" not in cols:
         conn.execute("ALTER TABLE users ADD COLUMN banned INTEGER NOT NULL DEFAULT 0")
+    if "last_topics" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN last_topics TEXT")
     conn.commit()
     conn.close()
 
@@ -88,6 +96,43 @@ def set_active(user_id, active):
 def set_banned(user_id, banned):
     conn = get_conn()
     conn.execute("UPDATE users SET banned = ? WHERE id = ?", (1 if banned else 0, user_id))
+    conn.commit()
+    conn.close()
+
+
+def get_last_topics(user_id):
+    conn = get_conn()
+    row = conn.execute("SELECT last_topics FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    if not row or not row["last_topics"]:
+        return []
+    return row["last_topics"].split("|")
+
+
+def set_last_topics(user_id, topics):
+    conn = get_conn()
+    conn.execute(
+        "UPDATE users SET last_topics = ? WHERE id = ?",
+        ("|".join(topics), user_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_setting(key, default=None):
+    conn = get_conn()
+    row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    conn.close()
+    return row["value"] if row else default
+
+
+def set_setting(key, value):
+    conn = get_conn()
+    conn.execute(
+        "INSERT INTO settings(key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (key, value),
+    )
     conn.commit()
     conn.close()
 

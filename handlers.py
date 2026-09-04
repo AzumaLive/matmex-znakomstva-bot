@@ -2,6 +2,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from aiogram import F, Router
+from aiogram.enums import ContentType
 from aiogram.filters import Command, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -316,4 +317,34 @@ async def chat_message(msg: Message) -> None:
         return
 
     await msg.bot.send_message(partner["id"], msg.text)
+
+
+MEDIA_TYPES = {
+    ContentType.STICKER,
+    ContentType.PHOTO,
+    ContentType.VIDEO,
+    ContentType.ANIMATION,
+    ContentType.VOICE,
+    ContentType.VIDEO_NOTE,
+    ContentType.DOCUMENT,
+    ContentType.AUDIO,
+}
+
+
+@router.message(StateFilter(None), F.content_type.in_(MEDIA_TYPES))
+async def chat_media(msg: Message) -> None:
+    user = db.get_user(msg.from_user.id)
+    if not user:
+        await msg.answer("Сначала зарегистрируйся — нажми /start.")
+        return
+
+    partner = db.get_active_partner(msg.from_user.id, today_str())
+    if not partner:
+        await msg.answer(
+            "Сейчас у тебя нет собеседника. Новый появится в 00:00. "
+            "Используй кнопки внизу для остальных действий."
+        )
+        return
+
+    await msg.copy_to(partner["id"])
 

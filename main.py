@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -29,18 +30,29 @@ class BanMiddleware(BaseMiddleware):
 
 
 async def nightly_matching(bot: Bot) -> None:
+    if db.get_setting("matching_enabled", "1") != "1":
+        logging.info("Автоподбор выключен, пропускаю.")
+        return
     today = datetime.now(ZoneInfo(config.TIMEZONE)).strftime("%Y-%m-%d")
     pairs, leftover = db.do_matching(today)
 
     for u1, u2 in pairs:
         info1 = db.get_user(u1)
         info2 = db.get_user(u2)
+        forbidden = set(db.get_last_topics(u1)) | set(db.get_last_topics(u2))
+        available = [t for t in config.TOPICS if t not in forbidden]
+        if len(available) >= 3:
+            topics = random.sample(available, 3)
+        else:
+            topics = random.sample(config.TOPICS, 3)
+        db.set_last_topics(u1, topics)
+        db.set_last_topics(u2, topics)
         try:
-            await bot.send_message(u1, build_match_message(info2))
+            await bot.send_message(u1, build_match_message(info2, topics))
         except Exception as e:
             logging.warning("Не удалось уведомить %s: %s", u1, e)
         try:
-            await bot.send_message(u2, build_match_message(info1))
+            await bot.send_message(u2, build_match_message(info1, topics))
         except Exception as e:
             logging.warning("Не удалось уведомить %s: %s", u2, e)
 
@@ -51,13 +63,13 @@ async def nightly_matching(bot: Bot) -> None:
             logging.warning("Не удалось уведомить %s: %s", leftover, e)
 
 
-def build_match_message(partner: dict) -> str:
-    topics = "\n".join(f"• {t}" for t in config.TOPICS)
+def build_match_message(partner: dict, topics: list) -> str:
+    topics_str = "\n".join(f"• {t}" for t in topics)
     return (
         f"🎉 Тебя свели с новым собеседником!\n\n"
         f"{format_user(partner)}\n\n"
         f"Можете приступать к общению.\n\n"
-        f"💡 О чём можно поговорить:\n{topics}"
+        f"💡 О чём можно поговорить:\n{topics_str}"
     )
 
 
@@ -104,6 +116,28 @@ async def main() -> None:
         await msg.answer(
             f"👥 Пользователей: {len(users)}\n\n" + "\n".join(lines)
         )
+
+    @dp.message(Command("matching"))
+    async def cmd_matching(msg: Message) -> None:
+        if msg.from_user.id not in config.ADMIN_IDS:
+            await msg.answer("Нет доступа.")
+            return
+        parts = msg.text.split()
+        if len(parts) > 1:
+            arg = parts[1].lower()
+            if arg == "on":
+                db.set_setting("matching_enabled", "1")
+                await msg.answer("Автоподбор в 00:00 включён.")
+            elif arg == "off":
+                db.set_setting("matching_enabled", "0")
+                await msg.answer("Автоподбор в 00:00 выключен.")
+            else:
+                await msg.answer("Использование: /matching on|off")
+        else:
+            state = db.get_setting("matching_enabled", "1")
+            await msg.answer(
+                "Автоподбор в 00:00: " + ("включён" if state == "1" else "выключен")
+            )
 
     @dp.message(Command("ban"))
     async def cmd_ban(msg: Message) -> None:
