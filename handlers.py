@@ -1,7 +1,7 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.enums import ContentType
 from aiogram.filters import Command, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
@@ -12,6 +12,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     KeyboardButton,
     Message,
+    MessageReactionUpdated,
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
 )
@@ -316,7 +317,8 @@ async def chat_message(msg: Message) -> None:
         )
         return
 
-    await msg.bot.send_message(partner["id"], msg.text)
+    sent = await msg.bot.send_message(partner["id"], msg.text)
+    db.save_message_map(msg.chat.id, msg.message_id, partner["id"], sent.message_id)
 
 
 MEDIA_TYPES = {
@@ -346,5 +348,47 @@ async def chat_media(msg: Message) -> None:
         )
         return
 
-    await msg.copy_to(partner["id"])
+    sent = await msg.copy_to(partner["id"])
+    db.save_message_map(msg.chat.id, msg.message_id, partner["id"], sent.message_id)
+
+
+@router.edited_message(StateFilter(None), F.text)
+async def chat_edit(msg: Message) -> None:
+    if msg.text.startswith("/") or msg.text in MENU_BUTTONS:
+        return
+
+    user = db.get_user(msg.from_user.id)
+    if not user:
+        return
+
+    partner = db.get_active_partner(msg.from_user.id, today_str())
+    if not partner:
+        return
+
+    peer = db.get_peer_message(msg.chat.id, msg.message_id)
+    if peer and peer[0] == partner["id"]:
+        await msg.bot.edit_message_text(msg.text, chat_id=peer[0], message_id=peer[1])
+    else:
+        sent = await msg.bot.send_message(partner["id"], msg.text)
+        db.save_message_map(msg.chat.id, msg.message_id, partner["id"], sent.message_id)
+
+
+@router.message_reaction()
+async def on_reaction(event: MessageReactionUpdated, bot: Bot) -> None:
+    if event.user is None:
+        return
+
+    user = db.get_user(event.user.id)
+    if not user:
+        return
+
+    partner = db.get_active_partner(event.user.id, today_str())
+    if not partner:
+        return
+
+    peer = db.get_peer_message(event.chat.id, event.message_id)
+    if not peer or peer[0] != partner["id"]:
+        return
+
+    await bot.set_message_reaction(peer[0], peer[1], reaction=event.new_reaction)
 

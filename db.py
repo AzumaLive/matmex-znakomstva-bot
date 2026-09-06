@@ -41,6 +41,14 @@ def init_db():
             key   TEXT PRIMARY KEY,
             value TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS message_map (
+            chat_id         INTEGER NOT NULL,
+            message_id      INTEGER NOT NULL,
+            peer_chat_id    INTEGER NOT NULL,
+            peer_message_id INTEGER NOT NULL,
+            PRIMARY KEY (chat_id, message_id)
+        );
         """
     )
     cols = [r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
@@ -57,8 +65,13 @@ def init_db():
 def add_user(user_id, first_name, last_name, role, group_num):
     conn = get_conn()
     conn.execute(
-        "INSERT OR REPLACE INTO users(id, first_name, last_name, role, group_num) "
-        "VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO users(id, first_name, last_name, role, group_num) "
+        "VALUES (?, ?, ?, ?, ?) "
+        "ON CONFLICT(id) DO UPDATE SET "
+        "first_name = excluded.first_name, "
+        "last_name = excluded.last_name, "
+        "role = excluded.role, "
+        "group_num = excluded.group_num",
         (user_id, first_name, last_name, role, group_num),
     )
     conn.commit()
@@ -137,6 +150,35 @@ def set_setting(key, value):
     conn.close()
 
 
+def save_message_map(chat_id, message_id, peer_chat_id, peer_message_id):
+    conn = get_conn()
+    conn.execute(
+        "INSERT OR REPLACE INTO message_map(chat_id, message_id, peer_chat_id, peer_message_id) "
+        "VALUES (?, ?, ?, ?)",
+        (chat_id, message_id, peer_chat_id, peer_message_id),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO message_map(chat_id, message_id, peer_chat_id, peer_message_id) "
+        "VALUES (?, ?, ?, ?)",
+        (peer_chat_id, peer_message_id, chat_id, message_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_peer_message(chat_id, message_id):
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT peer_chat_id, peer_message_id FROM message_map "
+        "WHERE chat_id = ? AND message_id = ?",
+        (chat_id, message_id),
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    return row["peer_chat_id"], row["peer_message_id"]
+
+
 def get_active_partner(user_id, date_str):
     conn = get_conn()
     row = conn.execute(
@@ -173,14 +215,18 @@ def do_matching(date_str):
     if len(ids) % 2 == 1:
         leftover = ids[-1]
 
+    conn = get_conn()
+    conn.execute(
+        "UPDATE pairs SET status = 'ended' WHERE date = ? AND status = 'active'",
+        (date_str,),
+    )
     if pairs:
-        conn = get_conn()
         conn.executemany(
             "INSERT INTO pairs(date, user1_id, user2_id) VALUES (?, ?, ?)",
             [(date_str, a, b) for a, b in pairs],
         )
-        conn.commit()
-        conn.close()
+    conn.commit()
+    conn.close()
 
     return pairs, leftover
 

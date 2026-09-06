@@ -196,7 +196,11 @@ async def main() -> None:
     scheduler = AsyncIOScheduler(timezone=config.TIMEZONE)
     scheduler.add_job(
         nightly_matching,
-        CronTrigger(hour=config.PAIR_START_HOUR, minute=config.PAIR_START_MINUTE),
+        CronTrigger(
+            hour=config.PAIR_START_HOUR,
+            minute=config.PAIR_START_MINUTE,
+            timezone=config.TIMEZONE,
+        ),
         args=[bot],
     )
     scheduler.start()
