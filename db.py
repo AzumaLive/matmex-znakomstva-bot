@@ -1,10 +1,18 @@
+import os
 import random
 import sqlite3
 
-DB_PATH = "bot.db"
+DB_PATH = os.getenv("DB_PATH") or os.getenv("DATABASE_PATH") or "bot.db"
+
+
+def _ensure_dir():
+    d = os.path.dirname(os.path.abspath(DB_PATH))
+    if d:
+        os.makedirs(d, exist_ok=True)
 
 
 def get_conn():
+    _ensure_dir()
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn

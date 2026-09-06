@@ -15,6 +15,7 @@ from apscheduler.triggers.cron import CronTrigger
 import config
 import db
 from handlers import PARTNER_LEFT_MESSAGE, format_user, router
+from storage import SQLiteStorage
 
 BAN_MESSAGE = "Вы забанены. Если тебе кажется, что произошла ошибка — пиши @forev4r_young1."
 
@@ -79,7 +80,7 @@ async def main() -> None:
     db.init_db()
 
     bot = Bot(token=config.BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-    dp = Dispatcher()
+    dp = Dispatcher(storage=SQLiteStorage())
     dp.include_router(router)
     dp.message.middleware(BanMiddleware())
 
